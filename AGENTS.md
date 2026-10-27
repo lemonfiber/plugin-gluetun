@@ -23,6 +23,12 @@ says how the catalogue pins it and how lemonfiber carries it.
 - **Its claims' recordings sit under `recordings/gluetun/`**, and its starting
   files, where it has any, under `config/gluetun/` (`ARCH-R271`).
 - **Every service declares `reaches` and `asks_for`** (`ARCH-R270`).
+- **What only the operator holds is stood in for when recorded** (`ARCH-R336`). The
+  provider, the endpoint, its key, the addresses and the private key each declare
+  `recorded_with`: a documentation address, `custom`, or a value minted for the run.
+  The tunnel never comes up when recorded, so its health is the control server's
+  `/v1/vpn/status`, which answers whether or not the tunnel is up; whether it is up is
+  read over `network.egress-guard`.
 - **No Python here.** The reader is spec's `first-party-plugin` workflow's.
 - **The image is Gluetun's own**, so this repository is never tagged. Moving
   the digest means recording every response again against the new image in
