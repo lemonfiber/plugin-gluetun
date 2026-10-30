@@ -17,8 +17,7 @@ when it starts, holding its control server to that key. The adapter is the Rust
 crate at the root, built on `lemonfiber-adapter-kit` from the core at the commit
 `Cargo.toml` pins, into the image the `Dockerfile` builds. `release.yml`
 publishes that image from every commit on `main` and from the train's tag.
-`plugin.toml` runs Gluetun alone, and its claim's recordings are Gluetun's own
-answers. The
+`plugin.toml` runs Gluetun and that adapter beside it. The
 [bundle contract](https://github.com/lemonfiber/spec/blob/main/20-architecture/contracts/bundle.md)
 says how the catalogue pins this repository and how lemonfiber carries it.
 
@@ -26,20 +25,33 @@ says how the catalogue pins this repository and how lemonfiber carries it.
 
 - **The plugin id is the service's id** (`ARCH-R266`). The container, the
   configuration directory, the settings and the journal keep their names.
-- **One service, speaking no contract**, while the bundle assembles it. It
-  declares `replaces` naming its own id, which is how it takes the id, the port
-  and the hostname the bundle reserves for it (`ARCH-R222`).
-- **Its claims' recordings sit under `recordings/gluetun/`**, and its starting
-  files, where it has any, under `config/gluetun/` (`ARCH-R271`).
+- **Two services: `gluetun` and `gluetun-adapter`.** `gluetun` speaks no
+  contract and declares `replaces` naming its own id, which is how it takes the
+  id, the port and the hostname the bundle reserves for it (`ARCH-R222`).
+  `gluetun-adapter` fronts it, speaks `network.egress-guard@1`, provides
+  `network.egress-guard` and shares Gluetun's configuration directory, which is
+  `/gluetun/auth` inside Gluetun, at `/gluetun` (`ARCH-R339`).
+- **Its proofs' recordings sit under `recordings/gluetun/`**, and its starting
+  files under `config/gluetun/` (`ARCH-R271`). The one starting file is the role
+  file, `config.toml`, naming the minted `control-key`, so lemonfiber writes it
+  owner-only before Gluetun first starts and the control server is never open; a
+  test holds it to what the adapter writes for the same key.
+- **`conformance/` holds one recording per case of `network.egress-guard@1`**, written
+  by `lemonfiber plugin record .` at the commit `targets.toml` names, the adapter
+  at the digest `plugin.toml` pins in front of Gluetun at its pinned digest.
+  Re-record whenever the adapter's answers or Gluetun's digest change.
+  `tests/conformance.rs` reads every recording with the core's own client.
 - **Every service declares `reaches` and `asks_for`** (`ARCH-R270`).
 - **What only the operator holds is stood in for when recorded** (`ARCH-R336`). The
   VPN type, the provider, the endpoint, its key, the addresses, the private and
   pre-shared keys and the OpenVPN username and password each declare `recorded_with`:
   `wireguard`, a documentation address, `custom`, or a value minted for the run. A
   setting without one is not written when recorded.
-  The tunnel never comes up when recorded, so its health is the control server's
-  `/v1/vpn/status`, which answers whether or not the tunnel is up; whether it is up is
-  read over `network.egress-guard`.
+  The tunnel never comes up when recorded, so Gluetun's health is that its control
+  server's port answers, which it does whether or not the tunnel is up and whatever
+  key it is asked with; whether it is up is read over `network.egress-guard`. Its
+  health server listens on `:9999` (`HEALTH_SERVER_ADDRESS`) so the adapter can ask
+  it.
 - **Its settings name the values Gluetun accepts** (`ARCH-R348`, ADR-0055). The VPN
   type is `wireguard` or `openvpn`; each provider is offered only over the type Gluetun
   runs it over with no more than a key, an address, a username and a password; port
