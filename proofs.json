@@ -3,8 +3,8 @@
   "against": "recordings",
   "proofs": [
     {
-      "id": "network.egress-guard/identifies",
-      "kind": "probe",
+      "id": "gluetun.guarded",
+      "kind": "proof",
       "outcome": "passed",
       "detail": ""
     }

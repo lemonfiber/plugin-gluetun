@@ -351,3 +351,12 @@ async fn the_control_server_answers_whether_or_not_it_admits_the_request() {
     );
     assert!(!gluetun(&Fake::silent(), &directory).answers().await);
 }
+
+#[test]
+fn the_role_file_lemonfiber_ships_is_the_one_the_key_makes() {
+    let shipped = include_str!("../../config/gluetun/config.toml");
+    assert_eq!(
+        shipped.replace("{{secret:control-key}}", &a_key()),
+        super::roles(&a_key())
+    );
+}
