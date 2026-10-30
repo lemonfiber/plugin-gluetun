@@ -9,9 +9,18 @@
 
 ## What this repo is
 
-A bundled part: Gluetun, as the stack lemonfiber ships carries it. The
+Gluetun as a first-party lemonfiber plugin: `plugin.toml` and the adapter that
+speaks the `network.egress-guard@1` contract in front of Gluetun. `up` and
+`forwarded` read Gluetun's control server under the key lemonfiber writes into
+the adapter's `upstream.json`, and `secure` writes the role file Gluetun reads
+when it starts, holding its control server to that key. The adapter is the Rust
+crate at the root, built on `lemonfiber-adapter-kit` from the core at the commit
+`Cargo.toml` pins, into the image the `Dockerfile` builds. `release.yml`
+publishes that image from every commit on `main` and from the train's tag.
+`plugin.toml` runs Gluetun alone, and its claim's recordings are Gluetun's own
+answers. The
 [bundle contract](https://github.com/lemonfiber/spec/blob/main/20-architecture/contracts/bundle.md)
-says how the catalogue pins it and how lemonfiber carries it.
+says how the catalogue pins this repository and how lemonfiber carries it.
 
 ## The rules you cannot break
 
@@ -38,7 +47,24 @@ says how the catalogue pins it and how lemonfiber carries it.
   secret is written only beside the values that need it (`ARCH-R349`). A missing one
   holds the guard back by name rather than leaving it restarting (`ARCH-R351`).
 - **No Python here.** The reader is spec's `first-party-plugin` workflow's.
-- **The image is Gluetun's own**, so this repository is never tagged. Moving
-  the digest means recording every response again against the new image in
-  the same change, committing the `proofs.json` the checks write, and reading the
-  image's provider lists again for `one_of`.
+- **No `unwrap`, `expect`, `panic` or indexing** outside tests. The lints in
+  `Cargo.toml` are the core's.
+- **The role file opens two routes to the key and nothing else.** One role,
+  `apikey`, for `GET /v1/vpn/status` and `GET /v1/portforward`; every other route
+  of the control server, and those two without the key, are refused. It is
+  written owner-only (`0600`) through `lemonfiber_adapter_kit::shared`, so a link,
+  a hardlink or a file that is not plain is replaced and never written through,
+  and a role file that is not the one the key makes is written over, since one
+  changed by hand can only open more.
+- **The tunnel is up only where Gluetun says it runs and its own health check
+  passes.** The health server, at `HEALTH`, is asked with nothing and only its
+  status is read; what it says on a failure is never passed on.
+- **`secure` answers at once only where Gluetun proves it holds the key**: the file
+  is the one the key makes, Gluetun admits a request under the key and refuses one
+  without it. Anything else is taken up when Gluetun next starts.
+- **The core's crates move with the train.** The `rev` in `Cargo.toml` is the
+  core commit `targets.toml` names, the same for every `lemonfiber-*` crate.
+- **Moving Gluetun's digest** means recording every response again against the
+  new image in the same change, moving `RELEASE` and `DIGEST` in `src/adapter.rs`
+  with it, committing the `proofs.json` the checks write, and reading the image's
+  provider lists again for `one_of`.
