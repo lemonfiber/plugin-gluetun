@@ -8,7 +8,7 @@ use lemonfiber_adapter_kit::settings::{asked, Asked, Settings};
 use lemonfiber_adapter_kit::web::Web;
 use lemonfiber_contract::adapter::about_path;
 
-use gluetun_adapter::adapter::{ADDRESS, API_KEY, SHARED};
+use gluetun_adapter::adapter::{ADDRESS, API_KEY, HEALTH, SHARED};
 use gluetun_adapter::gluetun::Gluetun;
 
 #[tokio::main]
@@ -37,6 +37,7 @@ async fn serve(settings: &Settings) -> Result<(), String> {
     let gluetun = Gluetun::new(
         Arc::new(web),
         settings.upstream.clone(),
+        HEALTH,
         Arc::new(Upstream::in_directory(&settings.configuration, API_KEY)),
         std::path::Path::new(SHARED),
     );

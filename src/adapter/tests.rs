@@ -7,7 +7,7 @@ use lemonfiber_contract::capabilities::network::egress;
 use lemonfiber_fixtures::http::{Answer, Fake};
 use tower::ServiceExt as _;
 
-use super::{about, kit, ADDRESS, DIGEST, RELEASE, UPSTREAM};
+use super::{about, kit, ADDRESS, DIGEST, HEALTH, RELEASE, UPSTREAM};
 use crate::gluetun::Gluetun;
 
 fn up() -> String {
@@ -22,6 +22,7 @@ fn gluetun(fake: &Arc<Fake>) -> Arc<Gluetun> {
     Arc::new(Gluetun::new(
         fake.clone(),
         ADDRESS,
+        HEALTH,
         Arc::new(('a'..='p').collect::<String>()),
         &std::env::temp_dir().join(format!("gluetun-adapter-{}", std::process::id())),
     ))
@@ -98,7 +99,13 @@ async fn it_is_ready_while_the_control_server_answers_even_refusing() {
 #[tokio::test]
 async fn the_tunnel_is_answered_over_the_contract() {
     let key = a_key();
-    let running = Fake::always(Answer::reply(200, r#"{"status":"running"}"#));
+    let running = Fake::by_path(vec![
+        (
+            "/v1/vpn/status",
+            Answer::reply(200, r#"{"status":"running"}"#),
+        ),
+        (":9999/", Answer::reply(200, "")),
+    ]);
     let (status, body) = answered_by(&running, &up(), Some(&key)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(serde_json::from_slice::<bool>(&body).ok(), Some(true));

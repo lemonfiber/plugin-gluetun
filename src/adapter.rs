@@ -11,6 +11,10 @@ use crate::gluetun::Gluetun;
 /// Where Gluetun's control server answers, by its service id and the port it listens on.
 pub const ADDRESS: &str = "http://gluetun:8000";
 
+/// Where Gluetun's health server answers, by its service id and the port the manifest
+/// has it listen on beside its control server.
+pub const HEALTH: &str = "http://gluetun:9999";
+
 /// Where Gluetun's configuration directory is, in the adapter's container, which the
 /// adapter shares and Gluetun reads its control server's roles from.
 pub const SHARED: &str = "/gluetun";

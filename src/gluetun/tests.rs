@@ -11,6 +11,8 @@ use super::{Gluetun, ROLES};
 
 const BASE: &str = "http://gluetun:8000";
 
+const HEALTH: &str = "http://gluetun:9999";
+
 /// A configuration directory of its own, removed when dropped.
 struct Directory(PathBuf);
 
@@ -42,7 +44,7 @@ fn another_key() -> String {
 }
 
 fn gluetun(http: &Arc<Fake>, directory: &Directory) -> Gluetun {
-    Gluetun::new(http.clone(), BASE, Arc::new(a_key()), &directory.0)
+    Gluetun::new(http.clone(), BASE, HEALTH, Arc::new(a_key()), &directory.0)
 }
 
 fn replying(answers: Vec<(u16, &'static str)>) -> Arc<Fake> {
@@ -62,15 +64,55 @@ impl Holding for Nothing {
     }
 }
 
+fn running_and(health: Answer) -> Arc<Fake> {
+    Fake::by_path(vec![
+        (
+            "/v1/vpn/status",
+            Answer::reply(200, r#"{"status":"running"}"#),
+        ),
+        (":9999/", health),
+    ])
+}
+
 #[tokio::test]
-async fn a_running_tunnel_is_up_and_asked_under_the_key() {
+async fn a_running_tunnel_whose_health_check_passes_is_up() {
     let directory = Directory::new("up");
-    let http = replying(vec![(200, r#"{"status":"running"}"#)]);
+    let http = running_and(Answer::reply(200, ""));
     assert_eq!(gluetun(&http, &directory).up().await.ok(), Some(true));
     let asked = http.requests();
-    assert!(asked.iter().all(|one| one.method == Method::Get
-        && one.url == format!("{BASE}/v1/vpn/status")
-        && one.headers == [("X-API-Key".to_owned(), a_key())]));
+    assert_eq!(
+        asked
+            .iter()
+            .map(|one| (one.method, one.url.clone(), one.headers.clone()))
+            .collect::<Vec<_>>(),
+        [
+            (
+                Method::Get,
+                format!("{BASE}/v1/vpn/status"),
+                vec![("X-API-Key".to_owned(), a_key())]
+            ),
+            (Method::Get, format!("{HEALTH}/"), Vec::new()),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_running_tunnel_whose_health_check_fails_is_not_up_and_nothing_it_says_is_passed_on() {
+    let directory = Directory::new("unhealthy");
+    let said = "dialing 203.0.113.9:443: i/o timeout";
+    let http = running_and(Answer::reply(500, said));
+    let answer = gluetun(&http, &directory).up().await;
+    assert_eq!(answer.ok(), Some(false));
+}
+
+#[tokio::test]
+async fn a_health_server_that_does_not_answer_leaves_the_tunnel_unknown() {
+    let directory = Directory::new("no-health");
+    let answer = gluetun(&running_and(Answer::Silent), &directory).up().await;
+    assert!(
+        matches!(&answer, Err(Failure::Unavailable { service }) if service == "gluetun health check"),
+        "{answer:?}"
+    );
 }
 
 #[tokio::test]
@@ -79,6 +121,7 @@ async fn a_tunnel_in_any_other_state_is_not_up() {
     for status in ["stopped", "starting", "crashed"] {
         let http = Fake::always(Answer::reply(200, format!(r#"{{"status":"{status}"}}"#)));
         assert_eq!(gluetun(&http, &directory).up().await.ok(), Some(false));
+        assert!(!http.asked_for(":9999"));
     }
 }
 
@@ -110,7 +153,7 @@ async fn a_refused_key_a_silent_server_and_an_unreadable_answer_are_each_said() 
 async fn without_a_key_held_nothing_is_asked_or_written() {
     let directory = Directory::new("unkeyed");
     let http = Fake::silent();
-    let unkeyed = Gluetun::new(http.clone(), BASE, Arc::new(Nothing), &directory.0);
+    let unkeyed = Gluetun::new(http.clone(), BASE, HEALTH, Arc::new(Nothing), &directory.0);
     for answer in [
         unkeyed.up().await.map(|_| ()),
         unkeyed.forwarded().await.map(|_| ()),
@@ -218,9 +261,15 @@ async fn a_role_file_gluetun_has_not_read_yet_is_taken_up_on_restart() {
 #[tokio::test]
 async fn a_role_file_for_another_key_is_written_over() {
     let directory = Directory::new("rotated");
-    let _ = Gluetun::new(Fake::silent(), BASE, Arc::new(another_key()), &directory.0)
-        .secure()
-        .await;
+    let _ = Gluetun::new(
+        Fake::silent(),
+        BASE,
+        HEALTH,
+        Arc::new(another_key()),
+        &directory.0,
+    )
+    .secure()
+    .await;
     assert!(directory.roles().contains(&another_key()));
     let http = Fake::silent();
     assert_eq!(
@@ -257,6 +306,7 @@ async fn a_directory_not_there_leaves_gluetun_unavailable_and_a_linked_one_is_re
     let missing = Gluetun::new(
         Fake::silent(),
         BASE,
+        HEALTH,
         Arc::new(a_key()),
         &directory.0.join("absent"),
     )
@@ -269,7 +319,7 @@ async fn a_directory_not_there_leaves_gluetun_unavailable_and_a_linked_one_is_re
     let elsewhere = Directory::new("linked-elsewhere");
     let linked = directory.0.join("linked");
     let _ = std::os::unix::fs::symlink(&elsewhere.0, &linked);
-    let refused = Gluetun::new(Fake::silent(), BASE, Arc::new(a_key()), &linked)
+    let refused = Gluetun::new(Fake::silent(), BASE, HEALTH, Arc::new(a_key()), &linked)
         .secure()
         .await;
     assert!(

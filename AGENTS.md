@@ -56,6 +56,9 @@ says how the catalogue pins this repository and how lemonfiber carries it.
   a hardlink or a file that is not plain is replaced and never written through,
   and a role file that is not the one the key makes is written over, since one
   changed by hand can only open more.
+- **The tunnel is up only where Gluetun says it runs and its own health check
+  passes.** The health server, at `HEALTH`, is asked with nothing and only its
+  status is read; what it says on a failure is never passed on.
 - **`secure` answers at once only where Gluetun proves it holds the key**: the file
   is the one the key makes, Gluetun admits a request under the key and refuses one
   without it. Anything else is taken up when Gluetun next starts.

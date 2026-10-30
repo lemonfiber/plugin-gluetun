@@ -7,6 +7,10 @@
 //! routes the contract reads, so every other route, and these two without the key, are
 //! refused. The file is written owner-only through the shared directory, so a link or a
 //! file that is not plain is replaced and never written through.
+//!
+//! The tunnel is up only where Gluetun says it runs and its own health check, which dials
+//! through the tunnel, passes. The health server is asked without the key, and only its
+//! status is read: what it says on a failure is never passed on.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,6 +40,12 @@ const FORWARDED: &str = "/v1/portforward";
 
 /// The status of a tunnel that is up.
 const RUNNING: &str = "running";
+
+/// What Gluetun's health server answers while its health check passes.
+const HEALTHY: u16 = 200;
+
+/// What a failure of Gluetun's health server is blamed on.
+const HEALTH_SERVICE: &str = "gluetun health check";
 
 /// What the role this adapter writes is named, in Gluetun's logs.
 const ROLE: &str = "lemonfiber";
@@ -83,21 +93,25 @@ struct Role<'a> {
 /// One Gluetun, asked through its control server with the key `held` supplies.
 pub struct Gluetun {
     endpoint: Endpoint,
+    health: Endpoint,
     held: Arc<dyn Holding>,
     directory: PathBuf,
 }
 
 impl Gluetun {
-    /// The Gluetun whose control server answers at `base` over `http`, asked with the key
-    /// `held` supplies, whose configuration directory is shared at `directory`.
+    /// The Gluetun whose control server answers at `base` and whose health server
+    /// answers at `health` over `http`, asked with the key `held` supplies, whose
+    /// configuration directory is shared at `directory`.
     #[must_use]
     pub fn new(
         http: Arc<dyn Http>,
         base: impl Into<String>,
+        health: impl Into<String>,
         held: Arc<dyn Holding>,
         directory: &Path,
     ) -> Self {
         Self {
+            health: Endpoint::new(Arc::clone(&http), health, HEALTH_SERVICE),
             endpoint: Endpoint::new(http, base, SERVICE),
             held,
             directory: directory.to_path_buf(),
@@ -132,6 +146,19 @@ impl Gluetun {
         }
     }
 
+    /// Whether Gluetun's own health check passes, its health server asked with nothing
+    /// and only its status read.
+    async fn healthy(&self) -> Result<bool, Failure> {
+        let asked = Request {
+            method: Method::Get,
+            url: self.health.url("/"),
+            headers: Vec::new(),
+            body: None,
+            pinned: None,
+        };
+        Ok(self.health.send(&asked).await?.status == HEALTHY)
+    }
+
     /// Whether Gluetun runs under the role file: it admits a request under `key` and
     /// refuses one without it.
     async fn holds(&self, key: &str) -> bool {
@@ -152,7 +179,10 @@ impl Tunnelling for Gluetun {
         let said: Status = self
             .endpoint
             .decode(&response, "the tunnel's status could not be read")?;
-        Ok(said.status == RUNNING)
+        if said.status != RUNNING {
+            return Ok(false);
+        }
+        self.healthy().await
     }
 
     async fn forwarded(&self) -> Result<Option<u16>, Failure> {
