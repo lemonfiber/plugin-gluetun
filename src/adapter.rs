@@ -28,8 +28,7 @@ pub const UPSTREAM: &str = "Gluetun";
 /// The Gluetun release this adapter's recordings were taken from.
 pub const RELEASE: &str = "v3.41.3";
 
-/// The digest of the image that release's recordings were taken from.
-pub const DIGEST: &str = "sha256:fa19cc76b2af13d57a8d3dc3066f2ada061b1c761b8aecf989b3877c0486e027";
+include!(concat!(env!("OUT_DIR"), "/fronted.rs"));
 
 /// What this adapter says it is: the contract it speaks and the release it supports.
 #[must_use]
